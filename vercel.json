@@ -1,0 +1,4 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npx vite build && node scripts/migrate.mjs"
+}
