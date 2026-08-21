@@ -81,10 +81,10 @@ function ReportPage() {
               Send another
             </Button>
             <Link
-              to="/reports"
+              to="/"
               className="inline-flex h-11 items-center rounded-md px-4 text-sm text-muted hover:bg-elevated hover:text-fg"
             >
-              Review inbox
+              Back to the map
             </Link>
           </div>
         </div>
@@ -168,11 +168,6 @@ function ReportPage() {
           <Button type="submit" className="w-full" disabled={pending}>
             {pending ? "Sending…" : "Submit report"}
           </Button>
-          <p className="text-center text-xs text-subtle">
-            <Link to="/reports" className="hover:text-fg">
-              Review submitted reports
-            </Link>
-          </p>
         </form>
       )}
     </main>
