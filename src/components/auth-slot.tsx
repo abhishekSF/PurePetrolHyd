@@ -1,10 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { User } from "lucide-react";
+import { authEnabled } from "@/lib/auth/client";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 export function AuthSlot() {
   const { user, isPending } = useCurrentUserState();
+  if (!authEnabled) return null;
   if (isPending) {
     return (
       <div

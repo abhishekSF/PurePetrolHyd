@@ -25,4 +25,4 @@ npm run dev
 
 Station rows live in `src/data/stations.ts`.
 
-Made with Grok by [@ASMGKR](https://x.com/ASMGKR)
+A project by [@ASMGKR](https://x.com/ASMGKR)

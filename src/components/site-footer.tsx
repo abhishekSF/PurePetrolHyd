@@ -1,62 +1,25 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 
 export function SiteFooter() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const compact = pathname === "/";
-
   return (
     <footer className="border-t border-line bg-bg">
-      <div
-        className={
-          compact
-            ? "mx-auto max-w-[1600px] px-4 py-2 sm:px-6"
-            : "mx-auto max-w-2xl px-5 py-6"
-        }
-      >
-        {compact ? (
-          <p className="text-[11px] leading-snug text-subtle">
-            Crowd-sourced from r/hyderabad. Premium E0, not regular petrol.{" "}
-            <Link to="/report" className="text-muted hover:text-fg">
-              Report a pump
-            </Link>
-            . Made with Grok by{" "}
-            <a
-              href="https://x.com/ASMGKR"
-              target="_blank"
-              rel="noreferrer"
-              className="text-muted hover:text-fg"
-            >
-              @ASMGKR
-            </a>
-          </p>
-        ) : (
-          <>
-            <p className="text-[12px] leading-relaxed text-muted">
-              Station data is crowd-sourced from the r/hyderabad community and
-              other public reports. Special thanks to the original contributors.
-              Availability can change. Please verify at the pump.
-            </p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-subtle">
-              High-octane ethanol-free premium fuel, usually ₹160-185/litre. Not
-              regular petrol.{" "}
-              <Link to="/report" className="text-muted hover:text-fg">
-                Report a pump
-              </Link>
-              .
-            </p>
-            <p className="mt-1.5 text-[12px] text-subtle">
-              Made with Grok by{" "}
-              <a
-                href="https://x.com/ASMGKR"
-                target="_blank"
-                rel="noreferrer"
-                className="text-muted underline-offset-2 hover:text-fg hover:underline"
-              >
-                @ASMGKR
-              </a>
-            </p>
-          </>
-        )}
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p className="text-[11px] text-subtle">
+          Crowd-sourced from r/hyderabad
+        </p>
+        <nav className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+          <Link to="/report" className="hover:text-fg">
+            Report a pump
+          </Link>
+          <a
+            href="https://x.com/ASMGKR"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-fg"
+          >
+            A project by @ASMGKR
+          </a>
+        </nav>
       </div>
     </footer>
   );
