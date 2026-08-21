@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
 import { Minus, Navigation, Phone, Plus, X } from "lucide-react";
 import type { Station } from "@/data/types";
 import {
-  BASEMAP_BOUNDS,
   BRAND_SHORT,
   CONFIDENCE_LABEL,
   GRADE_LABEL,
   HYDERABAD_CENTER,
 } from "@/data/types";
 import { E0_GRADES } from "@/data/types";
-import { cn, directionsHref, formatKm, haversineKm, telHref } from "@/lib/utils";
+import { formatKm, haversineKm, telHref, directionsHref } from "@/lib/utils";
 import { useFinder } from "@/store/finder";
 
 const BRAND_FILL: Record<Station["brand"], string> = {
@@ -20,225 +20,215 @@ const BRAND_FILL: Record<Station["brand"], string> = {
   other: "#8a8880",
 };
 
-type Props = {
-  stations: Station[];
-};
+type LeafletNS = typeof import("leaflet");
+type Props = { stations: Station[] };
 
-type LaidPin = {
-  station: Station;
-  x: number;
-  y: number;
-  ox: number;
-  oy: number;
-};
+const leafletPromise: Promise<LeafletNS> | null =
+  typeof window === "undefined"
+    ? null
+    : import("leaflet").then((m) => (m.default ?? m) as LeafletNS);
 
-function pinPos(lat: number, lng: number) {
-  const { north, south, west, east } = BASEMAP_BOUNDS;
-  const x = ((lng - west) / (east - west)) * 100;
-  const y = ((north - lat) / (north - south)) * 100;
-  return { x, y };
+function pinSvg(fill: string, active: boolean) {
+  const stroke = active ? "#ecebe4" : "#0c0d0b";
+  return `<svg width="${active ? 22 : 16}" height="${active ? 32 : 24}" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 0C5.4 0 0 5.1 0 11.4c0 8.6 12 24.6 12 24.6S24 20 24 11.4C24 5.1 18.6 0 12 0z" fill="${fill}" stroke="${stroke}" stroke-width="1.6"/><circle cx="12" cy="11.2" r="4.2" fill="#0c0d0b"/>${active ? `<circle cx="12" cy="11.2" r="2.1" fill="#ecebe4"/>` : ""}</svg>`;
 }
 
-function spreadPins(stations: Station[], minDist: number): LaidPin[] {
-  const pts: LaidPin[] = stations.map((station) => {
-    const p = pinPos(station.lat, station.lng);
-    return { station, x: p.x, y: p.y, ox: p.x, oy: p.y };
+function pinIcon(L: LeafletNS, brand: Station["brand"], active: boolean) {
+  return L.divIcon({
+    className: "station-marker",
+    iconSize: active ? [22, 32] : [16, 24],
+    iconAnchor: active ? [11, 32] : [8, 24],
+    html: pinSvg(BRAND_FILL[brand], active),
   });
-
-  for (let iter = 0; iter < 60; iter++) {
-    for (let i = 0; i < pts.length; i++) {
-      for (let j = i + 1; j < pts.length; j++) {
-        const dx = pts[j].x - pts[i].x;
-        const dy = pts[j].y - pts[i].y;
-        const d = Math.hypot(dx, dy) || 0.01;
-        if (d >= minDist) continue;
-        const push = (minDist - d) / 2;
-        const nx = dx / d;
-        const ny = dy / d;
-        pts[i].x -= nx * push;
-        pts[i].y -= ny * push;
-        pts[j].x += nx * push;
-        pts[j].y += ny * push;
-      }
-    }
-    for (const p of pts) {
-      p.x += (p.ox - p.x) * 0.06;
-      p.y += (p.oy - p.y) * 0.06;
-      p.x = Math.min(96.5, Math.max(3.5, p.x));
-      p.y = Math.min(96.5, Math.max(3.5, p.y));
-    }
-  }
-  return pts;
-}
-
-function MapPinMark({
-  fill,
-  active,
-}: {
-  fill: string;
-  active?: boolean;
-}) {
-  const h = active ? 28 : 22;
-  const w = active ? 20 : 16;
-  return (
-    <svg
-      width={w}
-      height={h}
-      viewBox="0 0 24 36"
-      aria-hidden
-      className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.65)]"
-    >
-      <path
-        d="M12 0C5.4 0 0 5.1 0 11.4c0 8.6 12 24.6 12 24.6S24 20 24 11.4C24 5.1 18.6 0 12 0z"
-        fill={fill}
-        stroke="#0c0d0b"
-        strokeWidth="1.4"
-      />
-      <circle cx="12" cy="11.2" r="4.2" fill="#0c0d0b" />
-      {active ? (
-        <circle cx="12" cy="11.2" r="2.1" fill="#ecebe4" />
-      ) : null}
-    </svg>
-  );
 }
 
 export function StationMap({ stations: list }: Props) {
   const { selectedId, selectStation, userLocation } = useFinder();
   const selected = list.find((s) => s.id === selectedId) ?? null;
-  const [zoom, setZoom] = useState(1);
   const [openCluster, setOpenCluster] = useState<Station[] | null>(null);
-  const [focus, setFocus] = useState<{ x: number; y: number } | null>(null);
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const LRef = useRef<LeafletNS | null>(null);
+  const markersRef = useRef<Map<string, LeafletMarker>>(new Map());
+  const userRef = useRef<LeafletMarker | null>(null);
+  const listRef = useRef(list);
+  const selectedRef = useRef(selectedId);
+  const selectRef = useRef(selectStation);
+  const skipFlyRef = useRef(true);
+  listRef.current = list;
+  selectedRef.current = selectedId;
+  selectRef.current = selectStation;
 
   useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !leafletPromise) return;
+    let cancelled = false;
+    let resize: ResizeObserver | null = null;
+
+    void leafletPromise.then((L) => {
+      if (cancelled || !wrapRef.current) return;
+      LRef.current = L;
+      const map = L.map(wrapRef.current, {
+        zoomControl: false,
+        attributionControl: false,
+        minZoom: 10,
+        maxZoom: 18,
+        zoomSnap: 0.5,
+        zoomDelta: 1,
+        fadeAnimation: false,
+        zoomAnimation: true,
+        markerZoomAnimation: false,
+        tapTolerance: 18,
+      });
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          subdomains: "abcd",
+          maxZoom: 19,
+          keepBuffer: 6,
+          updateWhenZooming: false,
+          updateWhenIdle: false,
+        },
+      ).addTo(map);
+      map.setView([HYDERABAD_CENTER.lat, HYDERABAD_CENTER.lng], 11, {
+        animate: false,
+      });
+      mapRef.current = map;
+
+      for (const station of listRef.current) {
+        const active = station.id === selectedRef.current;
+        const marker = L.marker([station.lat, station.lng], {
+          icon: pinIcon(L, station.brand, active),
+          title: station.name,
+          riseOnHover: true,
+          zIndexOffset: active ? 600 : 0,
+        }).addTo(map);
+        marker.on("click", () => {
+          const origin = map.latLngToLayerPoint(marker.getLatLng());
+          const nearby = listRef.current.filter((s) => {
+            const p = map.latLngToLayerPoint(L.latLng(s.lat, s.lng));
+            return origin.distanceTo(p) < 22;
+          });
+          if (nearby.length > 1) {
+            setOpenCluster(nearby);
+            selectRef.current(null);
+            return;
+          }
+          setOpenCluster(null);
+          selectRef.current(station.id);
+        });
+        markersRef.current.set(station.id, marker);
+      }
+
+      map.invalidateSize();
+      resize = new ResizeObserver(() => map.invalidateSize());
+      resize.observe(el);
+    });
+
+    return () => {
+      cancelled = true;
+      resize?.disconnect();
+      mapRef.current?.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L) return;
+    const keep = new Set(list.map((s) => s.id));
+    for (const [id, marker] of markersRef.current) {
+      if (!keep.has(id)) {
+        marker.remove();
+        markersRef.current.delete(id);
+      }
+    }
+    for (const station of list) {
+      const active = station.id === selectedId;
+      const icon = pinIcon(L, station.brand, active);
+      const existing = markersRef.current.get(station.id);
+      if (!existing) {
+        const marker = L.marker([station.lat, station.lng], {
+          icon,
+          title: station.name,
+          zIndexOffset: active ? 600 : 0,
+        }).addTo(map);
+        marker.on("click", () => selectRef.current(station.id));
+        markersRef.current.set(station.id, marker);
+      } else {
+        existing.setIcon(icon);
+        existing.setZIndexOffset(active ? 600 : 0);
+      }
+    }
+  }, [list, selectedId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedId) return;
+    if (skipFlyRef.current) {
+      skipFlyRef.current = false;
+      return;
+    }
+    const station = list.find((s) => s.id === selectedId);
+    if (!station) return;
+    map.setView(
+      [station.lat, station.lng],
+      Math.max(map.getZoom(), 14),
+      { animate: true, duration: 0.25 },
+    );
+  }, [selectedId, list]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L) return;
+    userRef.current?.remove();
+    userRef.current = null;
     if (!userLocation) return;
-    const p = pinPos(userLocation.lat, userLocation.lng);
-    const inCity = p.x >= 2 && p.x <= 98 && p.y >= 2 && p.y <= 98;
-    setFocus(inCity ? p : pinPos(list[0]?.lat ?? 17.43, list[0]?.lng ?? 78.41));
-    setZoom(inCity ? 2.2 : 1.5);
-  }, [userLocation, list]);
-
-  const pins = useMemo(
-    () => spreadPins(list, zoom >= 1.8 ? 2.6 : 5.4),
-    [list, zoom],
-  );
-
-  const origin = useMemo(() => {
-    if (focus) return focus;
-    return pinPos(HYDERABAD_CENTER.lat, HYDERABAD_CENTER.lng);
-  }, [focus]);
-
-  const pinScale = 1 / zoom;
+    userRef.current = L.circleMarker([userLocation.lat, userLocation.lng], {
+      radius: 7,
+      color: "#0c0d0b",
+      weight: 2,
+      fillColor: "#ecebe4",
+      fillOpacity: 1,
+    }).addTo(map);
+    map.setView(
+      [userLocation.lat, userLocation.lng],
+      Math.max(map.getZoom(), 13),
+      { animate: true, duration: 0.25 },
+    );
+  }, [userLocation]);
 
   function pickStation(station: Station) {
     setOpenCluster(null);
     selectStation(station.id);
-    document
-      .getElementById(`station-${station.id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function onPinClick(station: Station, from: LaidPin) {
-    const nearby = pins.filter(
-      (p) =>
-        p.station.id !== station.id &&
-        Math.hypot(p.x - from.x, p.y - from.y) < 2.4,
-    );
-    if (nearby.length) {
-      setOpenCluster([station, ...nearby.map((p) => p.station)]);
-      selectStation(null);
-      return;
-    }
-    pickStation(station);
+  function zoomBy(delta: number) {
+    mapRef.current?.setZoom((mapRef.current.getZoom() ?? 12) + delta);
   }
 
   return (
-    <div className="relative h-full min-h-[360px] overflow-hidden rounded-xl bg-elevated shadow-[0_0_0_1px_var(--color-border)]">
-      <div
-        className="absolute inset-0"
-        style={{
-          transform: `scale(${zoom})`,
-          transformOrigin: `${origin.x}% ${origin.y}%`,
-        }}
-      >
-        <img
-          src="/hyderabad-basemap.jpg"
-          alt="Map of Hyderabad petrol stations"
-          className="h-full w-full object-cover object-center"
-          draggable={false}
-        />
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-        >
-          {pins.map((p) => {
-            if (Math.hypot(p.x - p.ox, p.y - p.oy) < 0.8) return null;
-            return (
-              <line
-                key={`l-${p.station.id}`}
-                x1={p.ox}
-                y1={p.oy}
-                x2={p.x}
-                y2={p.y}
-                stroke="#ecebe4"
-                strokeOpacity="0.28"
-                strokeWidth="0.18"
-              />
-            );
-          })}
-        </svg>
-        {pins.map((p) => {
-          const active = p.station.id === selectedId;
-          return (
-            <button
-              key={p.station.id}
-              type="button"
-              title={p.station.name}
-              aria-label={p.station.name}
-              onClick={() => onPinClick(p.station, p)}
-              style={{
-                left: `${p.x}%`,
-                top: `${p.y}%`,
-                zIndex: active ? 20 : 10,
-                transform: `translate(-50%, -100%) scale(${pinScale})`,
-                transformOrigin: "bottom center",
-              }}
-              className="absolute flex h-9 w-8 items-end justify-center"
-            >
-              <MapPinMark
-                fill={BRAND_FILL[p.station.brand]}
-                active={active}
-              />
-            </button>
-          );
-        })}
-        {userLocation ? (
-          <span
-            className="absolute z-10 size-2.5 rounded-full bg-fg shadow-[0_0_0_3px_rgba(236,235,228,0.4)]"
-            style={{
-              left: `${pinPos(userLocation.lat, userLocation.lng).x}%`,
-              top: `${pinPos(userLocation.lat, userLocation.lng).y}%`,
-              transform: `translate(-50%, -50%) scale(${pinScale})`,
-            }}
-            aria-hidden
-          />
-        ) : null}
-      </div>
+    <div className="relative h-full min-h-[360px] overflow-hidden rounded-xl bg-[#1c1d18] shadow-[0_0_0_1px_var(--color-border)]">
+      <div ref={wrapRef} className="absolute inset-0 z-0" />
 
-      <div className="pointer-events-none absolute top-3 left-3 z-20 hidden rounded-md bg-bg/80 px-2.5 py-1.5 text-[11px] text-muted lg:block">
-        <span className="mr-2 inline-block size-2 rounded-full bg-iocl" />
+      <div className="pointer-events-none absolute bottom-2 left-3 z-20 rounded-md bg-bg/80 px-2 py-1 text-[10px] text-muted sm:text-[11px]">
+        <span className="mr-1.5 inline-block size-2 rounded-full bg-iocl" />
         IOCL
-        <span className="mr-2 ml-3 inline-block size-2 rounded-full bg-bpcl" />
+        <span className="mr-1.5 ml-2 inline-block size-2 rounded-full bg-bpcl" />
         BPCL
-        <span className="mr-2 ml-3 inline-block size-2 rounded-full bg-hpcl" />
+        <span className="mr-1.5 ml-2 inline-block size-2 rounded-full bg-hpcl" />
         HPCL
       </div>
 
-      <div className="absolute top-16 right-3 z-20 flex flex-col overflow-hidden rounded-md bg-bg/90 shadow-[0_0_0_1px_var(--color-border)]">
+      <div className="absolute top-3 right-3 z-20 flex flex-col overflow-hidden rounded-md bg-bg/90 shadow-[0_0_0_1px_var(--color-border)]">
         <button
           type="button"
           aria-label="Zoom in"
-          onClick={() => setZoom((z) => Math.min(2.4, z + 0.7))}
+          onClick={() => zoomBy(1)}
           className="grid size-10 place-items-center text-fg hover:bg-elevated"
         >
           <Plus className="size-4" />
@@ -246,15 +236,16 @@ export function StationMap({ stations: list }: Props) {
         <button
           type="button"
           aria-label="Zoom out"
-          onClick={() => {
-            setZoom((z) => Math.max(1, z - 0.7));
-            if (zoom <= 1.7) setFocus(null);
-          }}
+          onClick={() => zoomBy(-1)}
           className="grid size-10 place-items-center text-fg hover:bg-elevated"
         >
           <Minus className="size-4" />
         </button>
       </div>
+
+      <p className="pointer-events-none absolute right-3 bottom-2 z-10 text-[9px] text-subtle">
+        Map: OSM · CARTO Dark
+      </p>
 
       {openCluster ? (
         <div className="absolute inset-x-3 bottom-3 z-30 max-h-[42%] overflow-y-auto rounded-lg bg-bg/95 p-2 shadow-[0_0_0_1px_var(--color-border)] backdrop-blur-sm">
@@ -358,8 +349,8 @@ export function StationMap({ stations: list }: Props) {
           </div>
         </div>
       ) : (
-        <p className="pointer-events-none absolute inset-x-3 bottom-3 z-20 text-center text-[11px] text-muted sm:hidden">
-          Tap a pin
+        <p className="pointer-events-none absolute inset-x-3 bottom-8 z-20 text-center text-[11px] text-muted sm:hidden">
+          Pinch to zoom · tap a pin
         </p>
       )}
     </div>
