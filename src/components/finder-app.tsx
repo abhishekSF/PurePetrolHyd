@@ -97,10 +97,6 @@ export function FinderApp() {
             <p className="mt-2 text-sm text-muted">
               {stats.total} stations · {stats.open24} open 24 hours
             </p>
-            <p className="mt-1 hidden max-w-prose text-sm text-subtle sm:block">
-              The grades still sold unblended. Stock moves. Call before you
-              queue.
-            </p>
           </div>
           <StationFilters count={visible.length} />
         </div>
