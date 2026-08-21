@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { formatPhone } from "@/lib/utils";
 import {
   REPORT_FUEL_LABEL,
   listPumpReports,
@@ -8,7 +7,19 @@ import {
 
 export const Route = createFileRoute("/reports")({
   component: ReportsPage,
-  loader: () => listPumpReports(),
+  loader: async () => {
+    try {
+      return await listPumpReports();
+    } catch {
+      return [] as PumpReport[];
+    }
+  },
+  head: () => ({
+    meta: [
+      { title: "Reports · PurePetrol Hyd" },
+      { name: "robots", content: "noindex,nofollow" },
+    ],
+  }),
 });
 
 function ReportsPage() {
@@ -66,7 +77,6 @@ function ReportCard({ report }: { report: PumpReport }) {
       <p className="mt-1 text-sm text-muted">{report.area}</p>
       <p className="mt-3 text-sm text-fg">
         {REPORT_FUEL_LABEL[report.fuel]}
-        {report.phone ? ` · ${formatPhone(report.phone)}` : ""}
       </p>
       {report.note ? (
         <p className="mt-2 text-sm leading-relaxed text-muted">{report.note}</p>
