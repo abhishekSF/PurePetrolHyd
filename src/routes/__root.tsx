@@ -61,6 +61,10 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "preconnect", href: "https://a.basemaps.cartocdn.com" },
+      { rel: "preconnect", href: "https://b.basemaps.cartocdn.com" },
+      { rel: "preconnect", href: "https://c.basemaps.cartocdn.com" },
+      { rel: "dns-prefetch", href: "https://basemaps.cartocdn.com" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
