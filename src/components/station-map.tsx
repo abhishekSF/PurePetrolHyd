@@ -82,10 +82,9 @@ export function StationMap({ stations: list }: Props) {
         tapTolerance: 18,
       });
       L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
         {
-          subdomains: "abcd",
-          maxZoom: 19,
+          maxZoom: 16,
           keepBuffer: 6,
           updateWhenZooming: false,
           updateWhenIdle: false,
@@ -244,7 +243,7 @@ export function StationMap({ stations: list }: Props) {
       </div>
 
       <p className="pointer-events-none absolute right-3 bottom-2 z-10 text-[9px] text-subtle">
-        Map: OSM · CARTO Dark
+        Map: Esri Dark Gray
       </p>
 
       {openCluster ? (
