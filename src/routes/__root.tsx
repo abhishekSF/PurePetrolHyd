@@ -4,6 +4,7 @@ import {
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
+import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AppHeader } from "@/components/app-header";
@@ -105,6 +106,7 @@ function RootLayout() {
             <SiteFooter />
           </div>
         </AuthProvider>
+        <Analytics />
         <Scripts />
       </body>
     </html>
